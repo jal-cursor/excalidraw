@@ -122,7 +122,8 @@ const decryptComments = async (
   if (!data.commentsCiphertext || !data.commentsIv) {
     return [];
   }
-  const ciphertext = data.commentsCiphertext.toUint8Array() as Uint8Array<ArrayBuffer>;
+  const ciphertext =
+    data.commentsCiphertext.toUint8Array() as Uint8Array<ArrayBuffer>;
   const iv = data.commentsIv.toUint8Array() as Uint8Array<ArrayBuffer>;
   const decrypted = await decryptData(iv, ciphertext, roomKey);
   const decodedData = new TextDecoder("utf-8").decode(

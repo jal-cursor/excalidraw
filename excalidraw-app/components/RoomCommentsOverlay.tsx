@@ -5,7 +5,7 @@ import {
   viewportCoordsToSceneCoords,
 } from "@excalidraw/excalidraw";
 import { t } from "@excalidraw/excalidraw/i18n";
-import { useAtom, useAtomValue } from "jotai";
+
 import {
   useCallback,
   useEffect,
@@ -14,7 +14,10 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 
-import type { CollabAPI } from "../collab/Collab";
+import type { AppState } from "@excalidraw/excalidraw/types";
+
+import type { OrderedExcalidrawElement } from "@excalidraw/element/types";
+
 import { collabAPIAtom, isCollaboratingAtom } from "../collab/Collab";
 import {
   roomCommentComposerAtom,
@@ -22,15 +25,13 @@ import {
   roomCommentsAtom,
   type RoomCommentComposerState,
 } from "../collab/roomCommentsAtom";
-import {
-  generateCommentId,
-  type RoomComment,
-} from "../data/comments";
+import { generateCommentId, type RoomComment } from "../data/comments";
 
-import type { AppState } from "@excalidraw/excalidraw/types";
-import type { OrderedExcalidrawElement } from "@excalidraw/element/types";
+import { useAtom, useAtomValue } from "../app-jotai";
 
 import "./RoomCommentsOverlay.scss";
+
+import type { CollabAPI } from "../collab/Collab";
 
 const RoomCommentsOverlay = () => {
   const excalidrawAPI = useExcalidrawAPI();
@@ -39,7 +40,9 @@ const RoomCommentsOverlay = () => {
   const isCollaborating = useAtomValue(isCollaboratingAtom);
   const [comments] = useAtom(roomCommentsAtom);
   const [composer, setComposer] = useAtom(roomCommentComposerAtom);
-  const [placementMode, setPlacementMode] = useAtom(roomCommentPlacementModeAtom);
+  const [placementMode, setPlacementMode] = useAtom(
+    roomCommentPlacementModeAtom,
+  );
   const [, forceRerender] = useState(0);
 
   useEffect(() => {
@@ -71,7 +74,13 @@ const RoomCommentsOverlay = () => {
       setPlacementMode(false);
       setComposer({ mode: "scene", x, y });
     },
-    [placementMode, isCollaborating, excalidrawAPI, setComposer, setPlacementMode],
+    [
+      placementMode,
+      isCollaborating,
+      excalidrawAPI,
+      setComposer,
+      setPlacementMode,
+    ],
   );
 
   useEffect(() => {
@@ -116,7 +125,10 @@ const RoomCommentsOverlay = () => {
             type="button"
             className="excalidraw-app-room-comments-toolbar__btn"
             onClick={() =>
-              setComposer({ mode: "element", elementId: singleSelectedElementId })
+              setComposer({
+                mode: "element",
+                elementId: singleSelectedElementId,
+              })
             }
           >
             {t("labels.roomCommentOnSelection")}
@@ -236,7 +248,7 @@ const CommentPin = (props: {
     if (!el || el.isDeleted) {
       return null;
     }
-    const [x1, y1, x2, y2] = getCommonBounds([el]);
+    const [x1, y1, x2] = getCommonBounds([el]);
     sceneX = (x1 + x2) / 2;
     sceneY = y1 - 8;
   }
@@ -277,9 +289,7 @@ const CommentComposerModal = (props: {
   const { composer, excalidrawAPI, comments, onClose, onSubmit, onDelete } =
     props;
   const initial =
-    composer.mode === "edit"
-      ? comments[composer.commentId]?.content ?? ""
-      : "";
+    composer.mode === "edit" ? comments[composer.commentId]?.content ?? "" : "";
   const [text, setText] = useState(initial);
 
   const appState = excalidrawAPI.getAppState();
@@ -298,7 +308,7 @@ const CommentComposerModal = (props: {
       .getSceneElementsIncludingDeleted()
       .find((e) => e.id === composer.elementId);
     if (el && !el.isDeleted) {
-      const [x1, y1, x2, y2] = getCommonBounds([el]);
+      const [x1, y1, x2] = getCommonBounds([el]);
       const cx = (x1 + x2) / 2;
       const cy = y1 - 8;
       const { x: vx, y: vy } = sceneCoordsToViewportCoords(
@@ -311,10 +321,7 @@ const CommentComposerModal = (props: {
   }
 
   return (
-    <div
-      className="excalidraw-app-room-comment-composer"
-      style={{ left, top }}
-    >
+    <div className="excalidraw-app-room-comment-composer" style={{ left, top }}>
       <textarea
         className="excalidraw-app-room-comment-composer__input"
         value={text}
