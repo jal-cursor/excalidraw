@@ -15,7 +15,7 @@ import {
 } from "react";
 
 import type { CollabAPI } from "../collab/Collab";
-import { collabAPIAtom } from "../collab/Collab";
+import { collabAPIAtom, isCollaboratingAtom } from "../collab/Collab";
 import {
   roomCommentComposerAtom,
   roomCommentPlacementModeAtom,
@@ -35,6 +35,8 @@ import "./RoomCommentsOverlay.scss";
 const RoomCommentsOverlay = () => {
   const excalidrawAPI = useExcalidrawAPI();
   const collabAPI = useAtomValue(collabAPIAtom);
+  /** Must subscribe to the atom: `collabAPI` is a stable ref and does not trigger re-renders when collab starts. */
+  const isCollaborating = useAtomValue(isCollaboratingAtom);
   const [comments] = useAtom(roomCommentsAtom);
   const [composer, setComposer] = useAtom(roomCommentComposerAtom);
   const [placementMode, setPlacementMode] = useAtom(roomCommentPlacementModeAtom);
@@ -55,7 +57,7 @@ const RoomCommentsOverlay = () => {
       _pointerDownState: unknown,
       event: ReactPointerEvent<HTMLElement>,
     ) => {
-      if (!placementMode || !collabAPI?.isCollaborating()) {
+      if (!placementMode || !isCollaborating) {
         return;
       }
       if (activeTool.type !== "selection") {
@@ -69,7 +71,7 @@ const RoomCommentsOverlay = () => {
       setPlacementMode(false);
       setComposer({ mode: "scene", x, y });
     },
-    [placementMode, collabAPI, excalidrawAPI, setComposer, setPlacementMode],
+    [placementMode, isCollaborating, excalidrawAPI, setComposer, setPlacementMode],
   );
 
   useEffect(() => {
@@ -84,7 +86,7 @@ const RoomCommentsOverlay = () => {
     [comments],
   );
 
-  if (!excalidrawAPI || !collabAPI?.isCollaborating()) {
+  if (!excalidrawAPI || !isCollaborating || !collabAPI) {
     return null;
   }
 
