@@ -29,7 +29,9 @@ Object.defineProperty(window, "crypto", {
 
 vi.mock("../../excalidraw-app/data/firebase.ts", () => {
   const loadFromFirebase = async () => null;
+  const loadCommentsFromFirebase = async () => [];
   const saveToFirebase = () => {};
+  const saveCommentsToFirebase = () => {};
   const isSavedToFirebase = () => true;
   const loadFilesFromFirebase = async () => ({
     loadedFiles: [],
@@ -42,7 +44,9 @@ vi.mock("../../excalidraw-app/data/firebase.ts", () => {
 
   return {
     loadFromFirebase,
+    loadCommentsFromFirebase,
     saveToFirebase,
+    saveCommentsToFirebase,
     isSavedToFirebase,
     loadFilesFromFirebase,
     saveFilesToFirebase,

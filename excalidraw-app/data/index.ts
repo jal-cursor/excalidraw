@@ -38,6 +38,7 @@ import {
 import { encodeFilesForUpload } from "./FileManager";
 import { saveFilesToFirebase } from "./firebase";
 
+import type { CommentUpdatePayload } from "./comments";
 import type { WS_SUBTYPES } from "../app_constants";
 
 export type SyncableExcalidrawElement = OrderedExcalidrawElement &
@@ -117,6 +118,10 @@ export type SocketUpdateDataSource = {
       userState: UserIdleState;
       username: string;
     };
+  };
+  COMMENT_UPDATE: {
+    type: WS_SUBTYPES.COMMENT_UPDATE;
+    payload: CommentUpdatePayload;
   };
 };
 

@@ -147,6 +147,7 @@ import "./index.scss";
 
 import { ExcalidrawPlusPromoBanner } from "./components/ExcalidrawPlusPromoBanner";
 import { AppSidebar } from "./components/AppSidebar";
+import RoomCommentsOverlay from "./components/RoomCommentsOverlay";
 
 import type { CollabAPI } from "./collab/Collab";
 
@@ -1039,6 +1040,7 @@ const ExcalidrawWrapper = () => {
         {excalidrawAPI && !isCollabDisabled && (
           <Collab excalidrawAPI={excalidrawAPI} />
         )}
+        {excalidrawAPI && !isCollabDisabled && <RoomCommentsOverlay />}
 
         <ShareDialog
           collabAPI={collabAPI}

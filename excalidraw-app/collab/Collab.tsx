@@ -68,6 +68,11 @@ import {
   getSyncableElements,
 } from "../data";
 import {
+  mergeCommentUpdate,
+  type CommentUpdatePayload,
+  type RoomComment,
+} from "../data/comments";
+import {
   encodeFilesForUpload,
   FileManager,
   updateStaleImageStatuses,
@@ -76,8 +81,10 @@ import { FileStatusStore } from "../data/fileStatusStore";
 import { LocalData } from "../data/LocalData";
 import {
   isSavedToFirebase,
+  loadCommentsFromFirebase,
   loadFilesFromFirebase,
   loadFromFirebase,
+  saveCommentsToFirebase,
   saveFilesToFirebase,
   saveToFirebase,
 } from "../data/firebase";
@@ -88,6 +95,12 @@ import {
 import { resetBrowserStateVersions } from "../data/tabSync";
 
 import { collabErrorIndicatorAtom } from "./CollabError";
+import {
+  roomCommentComposerAtom,
+  roomCommentPlacementModeAtom,
+  roomCommentsAtom,
+  type RoomCommentComposerState,
+} from "./roomCommentsAtom";
 import Portal from "./Portal";
 
 import type {
@@ -123,6 +136,9 @@ export interface CollabAPI {
   getUsername: CollabInstance["getUsername"];
   getActiveRoomLink: CollabInstance["getActiveRoomLink"];
   setCollabError: CollabInstance["setErrorDialog"];
+  applyCommentUpdate: CollabInstance["applyCommentUpdate"];
+  openCommentComposer: CollabInstance["openCommentComposer"];
+  getCommentAuthorId: CollabInstance["getCommentAuthorId"];
 }
 
 interface CollabProps {
@@ -139,6 +155,7 @@ class Collab extends PureComponent<CollabProps, CollabState> {
   private socketInitializationTimer?: number;
   private lastBroadcastedOrReceivedSceneVersion: number = -1;
   private collaborators = new Map<SocketId, Collaborator>();
+  private roomCommentUnsubscribe: (() => void) | null = null;
 
   constructor(props: CollabProps) {
     super(props);
@@ -223,6 +240,8 @@ class Collab extends PureComponent<CollabProps, CollabState> {
     this.onUmmount = () => {
       unsubOnUserFollow();
       unsubOnScrollChange();
+      this.roomCommentUnsubscribe?.();
+      this.roomCommentUnsubscribe = null;
     };
 
     this.onOfflineStatusToggle();
@@ -238,9 +257,18 @@ class Collab extends PureComponent<CollabProps, CollabState> {
       getUsername: this.getUsername,
       getActiveRoomLink: this.getActiveRoomLink,
       setCollabError: this.setErrorDialog,
+      applyCommentUpdate: this.applyCommentUpdate,
+      openCommentComposer: this.openCommentComposer,
+      getCommentAuthorId: this.getCommentAuthorId,
     };
 
     appJotaiStore.set(collabAPIAtom, collabAPI);
+
+    this.roomCommentUnsubscribe = this.excalidrawAPI.onChange(() => {
+      if (this.isCollaborating()) {
+        this.refreshRoomCommentsDetached();
+      }
+    });
 
     if (isTestEnv() || isDevEnv()) {
       window.collab = window.collab || ({} as Window["collab"]);
@@ -301,6 +329,10 @@ class Collab extends PureComponent<CollabProps, CollabState> {
       // this won't run in time if user decides to leave the site, but
       //  the purpose is to run in immediately after user decides to stay
       this.saveCollabRoomToFirebase(syncableElements);
+      void saveCommentsToFirebase(
+        this.portal,
+        Object.values(appJotaiStore.get(roomCommentsAtom)),
+      );
 
       if (import.meta.env.VITE_APP_DISABLE_PREVENT_UNLOAD !== "true") {
         preventUnload(event);
@@ -357,6 +389,7 @@ class Collab extends PureComponent<CollabProps, CollabState> {
   stopCollaboration = (keepRemoteState = true) => {
     this.queueBroadcastAllElements.cancel();
     this.queueSaveToFirebase.cancel();
+    this.queueSaveCommentsToFirebase.cancel();
     this.loadImageFiles.cancel();
     this.resetErrorIndicator(true);
 
@@ -364,6 +397,10 @@ class Collab extends PureComponent<CollabProps, CollabState> {
       getSyncableElements(
         this.excalidrawAPI.getSceneElementsIncludingDeleted(),
       ),
+    );
+    void saveCommentsToFirebase(
+      this.portal,
+      Object.values(appJotaiStore.get(roomCommentsAtom)),
     );
 
     if (this.portal.socket && this.fallbackInitializationHandler) {
@@ -404,8 +441,12 @@ class Collab extends PureComponent<CollabProps, CollabState> {
 
   private destroySocketClient = (opts?: { isUnload: boolean }) => {
     this.lastBroadcastedOrReceivedSceneVersion = -1;
+    this.queueSaveCommentsToFirebase.cancel();
     this.portal.close();
     this.fileManager.reset();
+    appJotaiStore.set(roomCommentsAtom, {});
+    appJotaiStore.set(roomCommentComposerAtom, null);
+    appJotaiStore.set(roomCommentPlacementModeAtom, false);
     if (!opts?.isUnload) {
       this.setIsCollaborating(false);
       this.setActiveRoomLink(null);
@@ -503,6 +544,8 @@ class Collab extends PureComponent<CollabProps, CollabState> {
     >();
 
     this.setIsCollaborating(true);
+    appJotaiStore.set(roomCommentsAtom, {});
+    appJotaiStore.set(roomCommentComposerAtom, null);
     LocalData.pauseSave("collaboration");
 
     const { default: socketIOClient } = await import(
@@ -669,6 +712,14 @@ class Collab extends PureComponent<CollabProps, CollabState> {
             break;
           }
 
+          case WS_SUBTYPES.COMMENT_UPDATE: {
+            this.applyCommentUpdate(decryptedData.payload, {
+              broadcast: false,
+              persist: false,
+            });
+            break;
+          }
+
           default: {
             assertNever(decryptedData, null);
           }
@@ -730,6 +781,17 @@ class Collab extends PureComponent<CollabProps, CollabState> {
           roomLinkData.roomKey,
           this.portal.socket,
         );
+        const loadedComments = await loadCommentsFromFirebase(
+          roomLinkData.roomId,
+          roomLinkData.roomKey,
+        );
+        const commentMap: Record<string, RoomComment> = {};
+        for (const c of loadedComments) {
+          commentMap[c.id] = c;
+        }
+        appJotaiStore.set(roomCommentsAtom, commentMap);
+        this.refreshRoomCommentsDetached();
+
         if (elements) {
           this.setLastBroadcastedOrReceivedSceneVersion(
             getSceneVersion(elements),
@@ -956,6 +1018,63 @@ class Collab extends PureComponent<CollabProps, CollabState> {
     this.broadcastElements(elements);
     this.queueSaveToFirebase();
   };
+
+  private refreshRoomCommentsDetached = () => {
+    const elementsMap = this.excalidrawAPI.getSceneElementsMapIncludingDeleted();
+    const prev = appJotaiStore.get(roomCommentsAtom);
+    let changed = false;
+    const next: Record<string, RoomComment> = { ...prev };
+    for (const id of Object.keys(next)) {
+      const c = next[id];
+      if (c.anchor.kind === "element") {
+        const el = elementsMap.get(c.anchor.elementId);
+        const detached = !el || el.isDeleted;
+        if (detached !== !!c.detached) {
+          next[id] = { ...c, detached };
+          changed = true;
+        }
+      }
+    }
+    if (changed) {
+      appJotaiStore.set(roomCommentsAtom, next);
+    }
+  };
+
+  applyCommentUpdate = (
+    payload: CommentUpdatePayload,
+    opts: { broadcast?: boolean; persist?: boolean } = {},
+  ) => {
+    appJotaiStore.set(roomCommentsAtom, (prev) =>
+      mergeCommentUpdate(prev, payload),
+    );
+    this.refreshRoomCommentsDetached();
+    if (opts.broadcast) {
+      void this.portal.broadcastCommentUpdate(payload);
+    }
+    if (opts.persist) {
+      this.queueSaveCommentsToFirebase();
+    }
+  };
+
+  openCommentComposer = (state: RoomCommentComposerState) => {
+    appJotaiStore.set(roomCommentComposerAtom, state);
+  };
+
+  getCommentAuthorId = () =>
+    (this.portal.socket?.id as string | undefined) ?? "local";
+
+  private queueSaveCommentsToFirebase = throttle(
+    () => {
+      if (this.portal.socketInitialized) {
+        void saveCommentsToFirebase(
+          this.portal,
+          Object.values(appJotaiStore.get(roomCommentsAtom)),
+        );
+      }
+    },
+    SYNC_FULL_SCENE_INTERVAL_MS,
+    { leading: false },
+  );
 
   queueBroadcastAllElements = throttle(() => {
     this.portal.broadcastScene(
