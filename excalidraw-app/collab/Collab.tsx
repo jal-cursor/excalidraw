@@ -1020,7 +1020,8 @@ class Collab extends PureComponent<CollabProps, CollabState> {
   };
 
   private refreshRoomCommentsDetached = () => {
-    const elementsMap = this.excalidrawAPI.getSceneElementsMapIncludingDeleted();
+    const elementsMap =
+      this.excalidrawAPI.getSceneElementsMapIncludingDeleted();
     const prev = appJotaiStore.get(roomCommentsAtom);
     let changed = false;
     const next: Record<string, RoomComment> = { ...prev };
