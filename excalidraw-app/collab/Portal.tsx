@@ -252,6 +252,16 @@ class Portal {
       this.socket.emit(WS_EVENTS.USER_FOLLOW_CHANGE, payload);
     }
   };
+
+  broadcastCommentUpdate = async (
+    payload: SocketUpdateDataSource["COMMENT_UPDATE"]["payload"],
+  ) => {
+    const data: SocketUpdateDataSource["COMMENT_UPDATE"] = {
+      type: WS_SUBTYPES.COMMENT_UPDATE,
+      payload,
+    };
+    await this._broadcastSocketData(data as SocketUpdateData);
+  };
 }
 
 export default Portal;

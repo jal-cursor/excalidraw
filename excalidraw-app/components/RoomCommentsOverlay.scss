@@ -1,0 +1,98 @@
+/* Above .layer-ui__wrapper (also --zIndex-layerUI): siblings with the same z-index
+   stack in DOM order, so the wrapper was painting over our toolbar. */
+.excalidraw-app-room-comments-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: var(--zIndex-ui-top);
+  pointer-events: none;
+}
+
+.excalidraw-app-room-comments-overlay > * {
+  pointer-events: auto;
+}
+
+.excalidraw-app-room-comments-toolbar {
+  position: absolute;
+  z-index: 1;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: calc(100% - 16px);
+}
+
+.excalidraw-app-room-comments-toolbar__btn {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--color-gray-30);
+  background: var(--island-bg-color);
+  color: var(--color-text-primary);
+  font-size: 12px;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--button-hover-bg);
+  }
+}
+
+.excalidraw-app-room-comment-pin {
+  position: absolute;
+  z-index: 1;
+  transform: translate(-50%, -100%);
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: white;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.2);
+  pointer-events: all;
+
+  &:hover {
+    filter: brightness(1.05);
+  }
+}
+
+.excalidraw-app-room-comment-composer {
+  position: absolute;
+  z-index: var(--zIndex-popup);
+  width: 320px;
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--island-bg-color);
+  border: 1px solid var(--color-gray-30);
+  box-shadow: var(--shadow-island);
+  pointer-events: all;
+}
+
+.excalidraw-app-room-comment-composer__input {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  min-height: 80px;
+  margin-bottom: 8px;
+  font: inherit;
+  padding: 8px;
+  border-radius: 4px;
+  border: 1px solid var(--color-gray-30);
+  background: var(--dialog-bg-color);
+  color: var(--color-text-primary);
+}
+
+.excalidraw-app-room-comment-composer__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.excalidraw-app-room-comment-composer__submit {
+  font-weight: 600;
+}

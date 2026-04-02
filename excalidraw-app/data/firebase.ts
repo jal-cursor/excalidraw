@@ -34,6 +34,7 @@ import { FILE_CACHE_MAX_AGE_SEC } from "../app_constants";
 
 import { getSyncableElements } from ".";
 
+import type { RoomComment } from "./comments";
 import type { SyncableExcalidrawElement } from ".";
 import type Portal from "../collab/Portal";
 import type { Socket } from "socket.io-client";
@@ -88,6 +89,9 @@ type FirebaseStoredScene = {
   sceneVersion: number;
   iv: Bytes;
   ciphertext: Bytes;
+  /** Encrypted JSON array of RoomComment (optional for legacy docs). */
+  commentsIv?: Bytes;
+  commentsCiphertext?: Bytes;
 };
 
 const encryptElements = async (
@@ -99,6 +103,33 @@ const encryptElements = async (
   const { encryptedBuffer, iv } = await encryptData(key, encoded);
 
   return { ciphertext: encryptedBuffer, iv };
+};
+
+const encryptComments = async (
+  key: string,
+  comments: readonly RoomComment[],
+): Promise<{ ciphertext: ArrayBuffer; iv: Uint8Array }> => {
+  const json = JSON.stringify(comments);
+  const encoded = new TextEncoder().encode(json);
+  const { encryptedBuffer, iv } = await encryptData(key, encoded);
+  return { ciphertext: encryptedBuffer, iv };
+};
+
+const decryptComments = async (
+  data: FirebaseStoredScene,
+  roomKey: string,
+): Promise<readonly RoomComment[]> => {
+  if (!data.commentsCiphertext || !data.commentsIv) {
+    return [];
+  }
+  const ciphertext =
+    data.commentsCiphertext.toUint8Array() as Uint8Array<ArrayBuffer>;
+  const iv = data.commentsIv.toUint8Array() as Uint8Array<ArrayBuffer>;
+  const decrypted = await decryptData(iv, ciphertext, roomKey);
+  const decodedData = new TextDecoder("utf-8").decode(
+    new Uint8Array(decrypted),
+  );
+  return JSON.parse(decodedData) as RoomComment[];
 };
 
 const decryptElements = async (
@@ -208,9 +239,7 @@ export const saveToFirebase = async (
 
     if (!snapshot.exists()) {
       const storedScene = await createFirebaseSceneDocument(elements, roomKey);
-
       transaction.set(docRef, storedScene);
-
       return storedScene;
     }
 
@@ -231,7 +260,15 @@ export const saveToFirebase = async (
       roomKey,
     );
 
-    transaction.update(docRef, storedScene);
+    const preserveComments =
+      prevStoredScene.commentsIv && prevStoredScene.commentsCiphertext
+        ? {
+            commentsIv: prevStoredScene.commentsIv,
+            commentsCiphertext: prevStoredScene.commentsCiphertext,
+          }
+        : {};
+
+    transaction.update(docRef, { ...storedScene, ...preserveComments });
 
     // Return the stored elements as the in memory `reconciledElements` could have mutated in the meantime
     return storedScene;
@@ -244,6 +281,31 @@ export const saveToFirebase = async (
   FirebaseSceneVersionCache.set(socket, storedElements);
 
   return toBrandedType<RemoteExcalidrawElement[]>(storedElements);
+};
+
+export const saveCommentsToFirebase = async (
+  portal: Portal,
+  comments: readonly RoomComment[],
+) => {
+  const { roomId, roomKey } = portal;
+  if (!roomId || !roomKey) {
+    return;
+  }
+
+  const firestore = _getFirestore();
+  const docRef = doc(firestore, "scenes", roomId);
+  const { ciphertext, iv } = await encryptComments(roomKey, comments);
+
+  await runTransaction(firestore, async (transaction) => {
+    const snapshot = await transaction.get(docRef);
+    if (!snapshot.exists()) {
+      return;
+    }
+    transaction.update(docRef, {
+      commentsIv: Bytes.fromUint8Array(iv),
+      commentsCiphertext: Bytes.fromUint8Array(new Uint8Array(ciphertext)),
+    });
+  });
 };
 
 export const loadFromFirebase = async (
@@ -269,6 +331,20 @@ export const loadFromFirebase = async (
   }
 
   return elements;
+};
+
+export const loadCommentsFromFirebase = async (
+  roomId: string,
+  roomKey: string,
+): Promise<readonly RoomComment[]> => {
+  const firestore = _getFirestore();
+  const docRef = doc(firestore, "scenes", roomId);
+  const docSnap = await getDoc(docRef);
+  if (!docSnap.exists()) {
+    return [];
+  }
+  const storedScene = docSnap.data() as FirebaseStoredScene;
+  return decryptComments(storedScene, roomKey);
 };
 
 export const loadFilesFromFirebase = async (
